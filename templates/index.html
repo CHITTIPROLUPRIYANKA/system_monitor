@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Infrastructure Monitoring Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    background: #f4f7fb;
+    color: #2c3e50;
+}
+
+.header {
+    background: linear-gradient(90deg, #a8edea, #fed6e3);
+    padding: 18px;
+    text-align: center;
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.main {
+    padding: 25px;
+    max-width: 1100px;
+    margin: auto;
+}
+
+.hero {
+    background: linear-gradient(90deg, #a8edea, #fed6e3);
+    padding: 22px;
+    border-radius: 14px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+
+.card {
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 14px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}
+
+.title {
+    font-size: 14px;
+    color: #7f8c8d;
+}
+
+.value {
+    font-size: 28px;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+.bar {
+    height: 8px;
+    background: #ecf0f1;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.fill {
+    height: 100%;
+    background: linear-gradient(90deg, #74ebd5, #acb6e5);
+    width: 0%;
+    transition: width 0.5s ease;
+}
+
+/* SYSTEM INFO */
+.system-info {
+    margin-top: 20px;
+    background: linear-gradient(135deg, #a8edea, #fed6e3);
+}
+
+.system-info p {
+    display: grid;
+    grid-template-columns: 150px auto;
+    margin: 8px 0;
+    font-size: 15px;
+}
+
+.system-info span {
+    font-weight: bold;
+}
+
+/* DOWNLOAD BUTTONS */
+.download-section {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.download-section button {
+    padding: 10px 22px;
+    margin: 8px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #a8edea, #fed6e3);
+    color: #2c3e50;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.download-section button:hover {
+    transform: translateY(-2px);
+    opacity: 0.9;
+}
+
+/* CHARTS */
+.charts {
+    margin-top: 30px;
+}
+
+.chart-box {
+    background: white;
+    padding: 15px;
+    border-radius: 14px;
+    margin-bottom: 20px;
+}
+
+/* LOG BOX */
+#logBox {
+    height: 220px;
+    overflow-y: auto;
+    background: linear-gradient(135deg, #a8edea, #fed6e3);
+    padding: 12px;
+    border-radius: 14px;
+    font-family: monospace;
+    font-size: 13px;
+}
+
+.footer {
+    text-align: center;
+    padding: 15px;
+    color: #7f8c8d;
+    font-size: 12px;
+}
+
+@media(max-width: 900px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+📊 Advanced Infrastructure Monitoring System
+</div>
+
+<div class="main">
+
+<div class="hero">
+    <h2>🚀 Live System Monitoring</h2>
+    <p>Real-time CPU, RAM, Disk + Reports</p>
+</div>
+
+<div class="grid">
+    <div class="card">
+        <div class="title">CPU Usage</div>
+        <div class="value" id="cpu">0%</div>
+        <div class="bar"><div class="fill" id="cpuBar"></div></div>
+    </div>
+
+    <div class="card">
+        <div class="title">RAM Usage</div>
+        <div class="value" id="ram">0%</div>
+        <div class="bar"><div class="fill" id="ramBar"></div></div>
+    </div>
+
+    <div class="card">
+        <div class="title">Disk Usage</div>
+        <div class="value" id="disk">0%</div>
+        <div class="bar"><div class="fill" id="diskBar"></div></div>
+    </div>
+</div>
+
+<!-- SYSTEM INFO -->
+<div class="card system-info">
+    <h3>💻 System Information</h3>
+    <p>OS <span id="os">-</span></p>
+    <p>CPU Cores <span id="cores">-</span></p>
+    <p>Total RAM (GB) <span id="total_ram">-</span></p>
+    <p>Uptime <span id="uptime">-</span></p>
+</div>
+
+<!-- DOWNLOAD BUTTONS -->
+<div class="download-section">
+    <button onclick="downloadCSV()">📄 Download CSV</button>
+    <button onclick="downloadPDF()">📑 Download PDF</button>
+</div>
+
+<div class="charts">
+    <div class="chart-box"><canvas id="cpuChart"></canvas></div>
+    <div class="chart-box"><canvas id="ramChart"></canvas></div>
+    <div class="chart-box"><canvas id="diskChart"></canvas></div>
+
+    <div class="chart-box">
+        <h3>📡 Real-Time Event Logs</h3>
+        <div id="logBox"></div>
+    </div>
+</div>
+
+<div class="footer">
+© 2026 Advanced Monitoring System
+</div>
+
+</div>
+
+<script>
+let cpuData=[],ramData=[],diskData=[],labels=[];
+const maxPoints=10;
+let lastAlertTime=0;
+
+if(Notification.permission!=="granted"){
+    Notification.requestPermission();
+}
+
+function showNotification(msg){
+    let now=Date.now();
+    if(Notification.permission==="granted" && now-lastAlertTime>10000){
+        new Notification(msg);
+        lastAlertTime=now;
+    }
+}
+
+function addLog(msg,color){
+    const logBox=document.getElementById("logBox");
+    const time=new Date().toLocaleTimeString();
+
+    const div=document.createElement("div");
+    div.innerHTML=`[${time}] <span style="color:${color};font-weight:bold;">${msg}</span>`;
+
+    logBox.appendChild(div);
+
+    if(logBox.children.length>30){
+        logBox.removeChild(logBox.firstChild);
+    }
+
+    logBox.scrollTop=logBox.scrollHeight;
+}
+
+const cpuChart=new Chart(document.getElementById('cpuChart'),{
+    type:'line',
+    data:{labels:labels,datasets:[{label:'CPU',data:cpuData,borderColor:'blue'}]},
+    options:{scales:{y:{min:0,max:100}}}
+});
+
+const ramChart=new Chart(document.getElementById('ramChart'),{
+    type:'line',
+    data:{labels:labels,datasets:[{label:'RAM',data:ramData,borderColor:'green'}]},
+    options:{scales:{y:{min:0,max:100}}}
+});
+
+const diskChart=new Chart(document.getElementById('diskChart'),{
+    type:'line',
+    data:{labels:labels,datasets:[{label:'Disk',data:diskData,borderColor:'purple'}]},
+    options:{scales:{y:{min:0,max:100}}}
+});
+
+async function fetchData(){
+    const res=await fetch("/data");
+    const data=await res.json();
+
+    cpu.innerText=data.cpu+"%";
+    cpuBar.style.width=data.cpu+"%";
+
+    ram.innerText=data.ram+"%";
+    ramBar.style.width=data.ram+"%";
+
+    disk.innerText=data.disk+"%";
+    diskBar.style.width=data.disk+"%";
+
+    os.innerText=data.os;
+    cores.innerText=data.cores;
+    total_ram.innerText=data.total_ram;
+    uptime.innerText=data.uptime;
+
+    let time=new Date().toLocaleTimeString();
+
+    labels.push(time);
+    cpuData.push(data.cpu);
+    ramData.push(data.ram);
+    diskData.push(data.disk);
+
+    if(labels.length>maxPoints){
+        labels.shift();
+        cpuData.shift();
+        ramData.shift();
+        diskData.shift();
+    }
+
+    cpuChart.update();
+    ramChart.update();
+    diskChart.update();
+
+    if(data.cpu>90) showNotification("⚠️ CPU above 90%");
+    if(data.ram>90) showNotification("⚠️ RAM above 90%");
+    if(data.disk>80) showNotification("⚠️ Disk above 80%");
+
+    addLog(`CPU: ${data.cpu}% | RAM: ${data.ram}% | Disk: ${data.disk}%`,"#2c3e50");
+}
+
+function downloadCSV(){ window.open("/report/csv"); }
+function downloadPDF(){ window.open("/report/pdf"); }
+
+setInterval(fetchData,2000);
+fetchData();
+</script>
+
+</body>
+</html>
