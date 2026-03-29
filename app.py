@@ -4,42 +4,54 @@ import platform
 import time
 import csv
 import os
-from io import StringIO
+from io import StringIO, BytesIO
 
 app = Flask(__name__)
 
 def get_system_data():
-    cpu = psutil.cpu_percent(interval=None)
-    ram = psutil.virtual_memory().percent
-    disk = psutil.disk_usage('C:\\').percent
+    try:
+        cpu = psutil.cpu_percent(interval=None)
+        ram = psutil.virtual_memory().percent
 
-    os_name = platform.system()
-    cores = psutil.cpu_count()
-    total_ram = round(psutil.virtual_memory().total / (1024**3), 2)
+        # ✅ FIXED FOR LINUX (Railway)
+        try:
+            disk = psutil.disk_usage('/').percent
+        except:
+            disk = 0
 
-    uptime_seconds = time.time() - psutil.boot_time()
-    uptime_hours = int(uptime_seconds // 3600)
-    uptime_minutes = int((uptime_seconds % 3600) // 60)
+        os_name = platform.system()
+        cores = psutil.cpu_count() or 0
+        total_ram = round(psutil.virtual_memory().total / (1024**3), 2)
 
-    return {
-        "cpu": cpu,
-        "ram": ram,
-        "disk": disk,
-        "os": os_name,
-        "cores": cores,
-        "total_ram": total_ram,
-        "uptime": f"{uptime_hours}h {uptime_minutes}m"
-    }
+        uptime_seconds = time.time() - psutil.boot_time()
+        uptime_hours = int(uptime_seconds // 3600)
+        uptime_minutes = int((uptime_seconds % 3600) // 60)
+
+        return {
+            "cpu": cpu or 0,
+            "ram": ram or 0,
+            "disk": disk or 0,
+            "os": os_name,
+            "cores": cores,
+            "total_ram": total_ram,
+            "uptime": f"{uptime_hours}h {uptime_minutes}m"
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
 
 @app.route('/')
 def home():
     return render_template("index.html")
 
+
 @app.route('/data')
 def data():
     return jsonify(get_system_data())
 
-# 🔥 CSV DOWNLOAD
+
+# 🔥 CSV DOWNLOAD (WORKING)
 @app.route('/report/csv')
 def download_csv():
     data = get_system_data()
@@ -48,36 +60,30 @@ def download_csv():
     writer = csv.writer(si)
 
     writer.writerow(["Metric", "Value"])
-    writer.writerow(["CPU (%)", data["cpu"]])
-    writer.writerow(["RAM (%)", data["ram"]])
-    writer.writerow(["Disk (%)", data["disk"]])
-    writer.writerow(["OS", data["os"]])
-    writer.writerow(["CPU Cores", data["cores"]])
-    writer.writerow(["Total RAM (GB)", data["total_ram"]])
-    writer.writerow(["Uptime", data["uptime"]])
+    for key, value in data.items():
+        writer.writerow([key, value])
 
-    output = si.getvalue()
-
-    return Response(output,
+    return Response(
+        si.getvalue(),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment;filename=report.csv"})
+        headers={"Content-Disposition": "attachment; filename=report.csv"}
+    )
 
-# 🔥 PDF DOWNLOAD
+
+# 🔥 PDF DOWNLOAD (FIXED - NO FILE SAVE)
 @app.route('/report/pdf')
 def download_pdf():
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.pagesizes import letter
-    from reportlab.lib import colors
 
     data = get_system_data()
 
-    file_path = "report.pdf"
-    doc = SimpleDocTemplate(file_path, pagesize=letter)
+    buffer = BytesIO()  # ✅ in-memory file
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
 
     content = []
-
     content.append(Paragraph("System Monitoring Report", styles['Title']))
     content.append(Spacer(1, 10))
 
@@ -87,12 +93,14 @@ def download_pdf():
 
     doc.build(content)
 
-    with open(file_path, "rb") as f:
-        pdf = f.read()
+    buffer.seek(0)
 
-    return Response(pdf,
+    return Response(
+        buffer,
         mimetype='application/pdf',
-        headers={"Content-Disposition": "attachment;filename=report.pdf"})
+        headers={"Content-Disposition": "attachment; filename=report.pdf"}
+    )
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
